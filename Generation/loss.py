@@ -254,8 +254,6 @@ class VICReg_loss(nn.Module):
             + self.args.cov_coeff * cov_loss
         )
 
-        print("VICReg loss: ", loss.item())
-
         return loss
 
 

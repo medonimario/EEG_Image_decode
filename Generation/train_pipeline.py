@@ -365,7 +365,7 @@ def plot_metrics(train_losses, test_losses, train_accuracies, test_accuracies,
 def load_and_freeze_best_model(eeg_model, args):
 
     # Getting output from the best model
-    PATH = f"./models/EEG_encoder/{args.encoder_type}/{sub}/lr{args.lr}" if args.insubject else f"./models/EEG_encoder/across/{args.encoder_type}/lr{args.lr}"
+    PATH = f"{args.model_dir}/{args.atms_target}_{args.encoder_type}/{sub}/{args.name}" if args.insubject else f"{args.model_dir}/across/{args.atms_target}_{args.encoder_type}/{args.name}"
     eeg_model.load_state_dict(torch.load(f"{PATH}/best.pth", weights_only=False, map_location=torch.device(device)))
     # Freezing the original embedder
     eeg_model.eval()
