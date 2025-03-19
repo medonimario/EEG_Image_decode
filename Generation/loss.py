@@ -143,7 +143,6 @@ class ClipLoss(nn.Module):
             + F.cross_entropy(logits_per_text, labels)
         ) / 2
 
-
         # Uniformity loss
         if self.uniformity_loss_weight:
             total_loss += self.uniformity_loss_weight * (1/2 * (uniformity_loss(image_features) + uniformity_loss(text_features)))
@@ -157,53 +156,62 @@ class ClipLoss(nn.Module):
             total_loss += self.uniformity_loss_weight * (alignment_loss(image_features, text_features))
 
         return total_loss
-
-
-# Helper functions for the various loss components
+    
+def normalize_embeddings(features):
+    """L2 normalizes the embeddings along the last dimension."""
+    return features / (features.norm(dim=-1, keepdim=True) + 1e-6)  # Prevent div by zero
 
 def uniformity_loss(features):
     """
     Computes the uniformity loss for the given embeddings.
     """
+    features = normalize_embeddings(features)  # Normalize embeddings
     N = features.shape[0]
-    pairwise_diff = features.unsqueeze(1) - features.unsqueeze(0)
-    pairwise_dist_sq = torch.sum(pairwise_diff ** 2, dim=-1)
-    exp_term = torch.exp(-2 * pairwise_dist_sq)
-    loss = torch.log(torch.mean(exp_term))
-    print("Uniformity loss: ", loss)
-    return loss
 
+    dist_matrix = torch.cdist(features, features, p=2) ** 2
+    
+    # Apply exponential function with -2 factor
+    exp_matrix = torch.exp(-2 * dist_matrix)
+    
+    loss = torch.log(exp_matrix.sum(dim=1).mean() + 1e-6)  # Stability in log
+
+    return loss
 
 def cross_modal_uniformity_loss(image_features, text_features):
     """
-    Computes the cross-modal uniformity loss between image and text embeddings.
+    Computes the XUniform loss between image and text embeddings.
     """
+    image_features = normalize_embeddings(image_features)  # Normalize
+    text_features = normalize_embeddings(text_features)    # Normalize
+    
     N = image_features.shape[0]
-    pairwise_diff = image_features.unsqueeze(1) - text_features.unsqueeze(0)
-    pairwise_dist_sq = torch.sum(pairwise_diff ** 2, dim=-1)
-    
-    mask = ~torch.eye(N, dtype=torch.bool, device=image_features.device)
-    exp_term = torch.exp(-2 * pairwise_dist_sq)
-    masked_exp_term = exp_term[mask]
-    
-    loss = torch.log(masked_exp_term.mean())
-    print("cross_modal uniformity loss: ", loss)
 
+    # Compute pairwise squared Euclidean distances
+    dist_matrix = torch.cdist(image_features, text_features, p=2) ** 2  # Shape: (N, N)
+
+    # Apply exponential function with -2 factor
+    exp_matrix = torch.exp(-2 * dist_matrix)
+
+    # Remove diagonal elements without modifying exp_matrix in-place
+    mask = torch.eye(N, device=image_features.device, dtype=torch.bool)
+    exp_matrix = exp_matrix * (~mask)  # Element-wise multiplication instead of masked_fill_()
+
+    # Compute mean and log
+    loss = torch.log(exp_matrix.sum(dim=1).mean() + 1e-6)  # Stability in log
     return loss
-
 
 def alignment_loss(image_features, text_features):
     """
-    Computes the alignment loss between image and text embeddings.
+    Computes the alignment loss between normalized image and text embeddings.
     """
-    N = image_features.shape[0]
+    image_features = normalize_embeddings(image_features)  # Normalize
+    text_features = normalize_embeddings(text_features)    # Normalize
+    
     pairwise_diff = image_features - text_features
     pairwise_dist_sq = torch.sum(pairwise_diff ** 2, dim=-1)
     loss = torch.mean(pairwise_dist_sq)
-    print("alignment loss: ", loss)
 
     return loss
-
 
 
 
@@ -245,6 +253,9 @@ class VICReg_loss(nn.Module):
             + self.args.std_coeff * std_loss
             + self.args.cov_coeff * cov_loss
         )
+
+        print("VICReg loss: ", loss.item())
+
         return loss
 
 

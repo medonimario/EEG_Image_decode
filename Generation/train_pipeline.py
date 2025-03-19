@@ -389,6 +389,8 @@ if __name__ == '__main__':
 
     # CLIP encoder
 
+    # --data_path /Users/pchho/Documents/repos/EEG_Image_decode/eeg_dataset/Preprocessed_data_250Hz --gpu mps --train_EEG_aligner --train_diffusion_prior --atms_target image --diffusion_target image --name vicreg_v2 --batch_size 64 --loss_fn vicreg --subjects sub-08
+
     # Use argparse to parse the command-line arguments
     parser = argparse.ArgumentParser(description='EEG Transformer Training Script')
     parser.add_argument('--data_path', type=str, default="/work3/s184984/repos/EEG_Image_decode/eeg_dataset/Preprocessed_data_250Hz", help='Path to the EEG dataset')
@@ -407,7 +409,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
     parser.add_argument('--logger', type=bool, default=True, help='Enable WandB logging')
     parser.add_argument('--gpu', type=str, default='cuda', help='GPU device to use')
-    parser.add_argument('--device', type=str, choices=['cpu', 'gpu'], default='gpu', help='Device to run on (cpu or gpu)')    
+    parser.add_argument('--device', type=str, choices=['cpu', 'gpu', 'mps'], default='gpu', help='Device to run on (cpu or gpu)')    
     parser.add_argument('--insubject', type=bool, default=True, help='In-subject mode or cross-subject mode')
     parser.add_argument('--encoder_type', type=str, default='ATMS', help='Encoder type')
     parser.add_argument('--atms_target', type=str, choices=['image', 'text'], default='image', help='Encoder type')
@@ -459,6 +461,8 @@ if __name__ == '__main__':
     # Set device based on the argument
     if args.device == 'gpu' and torch.cuda.is_available():
         device = torch.device(args.gpu)
+    elif args.device == 'mps' and torch.backends.mps.is_available():
+        device = torch.device(args.gpu)        
     else:
         device = torch.device('cpu')
 
