@@ -8,7 +8,6 @@ from tqdm import tqdm
 from diffusers.models.embeddings import Timesteps, TimestepEmbedding
 from torch.utils.data import Dataset
 
-
 class DiffusionPrior(nn.Module):
 
     def __init__(
@@ -205,17 +204,17 @@ class DiffusionPriorUNet(nn.Module):
 
 class EmbeddingDataset(Dataset):
 
-    def __init__(self, c_embeddings, h_embeddings):
-        self.c_embeddings = c_embeddings
-        self.h_embeddings = h_embeddings
+    def __init__(self, clip_eeg_embeddings, clip_embeddings):
+        self.clip_eeg_embeddings = clip_eeg_embeddings
+        self.clip_embeddings = clip_embeddings
 
     def __len__(self):
-        return len(self.c_embeddings)
+        return len(self.clip_eeg_embeddings)
 
     def __getitem__(self, idx):
         return {
-            "c_embedding": self.c_embeddings[idx],
-            "h_embedding": self.h_embeddings[idx]
+            "clip_eeg_embeddings": self.clip_eeg_embeddings[idx],
+            "clip_embeddings": self.clip_embeddings[idx]
         }
 
 class EmbeddingDatasetVICE(Dataset):
@@ -267,7 +266,7 @@ def add_noise_with_sigma(
 # diffusion pipe
 class Pipe:
     
-    def __init__(self, diffusion_prior=None, scheduler=None, device='cuda'):
+    def __init__(self, diffusion_prior=None, scheduler=None, device='cuda', logger = None):
         self.diffusion_prior = diffusion_prior.to(device)
         
         if scheduler is None:
@@ -278,8 +277,13 @@ class Pipe:
             self.scheduler = scheduler
             
         self.device = device
+
+        self.logger = logger
         
-    def train(self, dataloader, num_epochs=10, learning_rate=1e-4):
+    def train(self, dataloader, sub, args, num_epochs=10):
+
+        learning_rate = args.diffusion_lr
+
         self.diffusion_prior.train()
         device = self.device
         criterion = nn.MSELoss(reduction='none')
@@ -293,11 +297,14 @@ class Pipe:
 
         num_train_timesteps = self.scheduler.config.num_train_timesteps
 
-        for epoch in range(num_epochs):
+        best_loss = torch.inf
+        loss_per_epoch = {}
+
+        for epoch in tqdm(range(num_epochs), desc = "Diffusion Epoch"):
             loss_sum = 0
             for batch in dataloader:
-                c_embeds = batch['c_embedding'].to(device) if 'c_embedding' in batch.keys() else None
-                h_embeds = batch['h_embedding'].to(device)
+                c_embeds = batch['clip_eeg_embeddings'].to(device) if 'clip_eeg_embeddings' in batch.keys() else None
+                h_embeds = batch['clip_embeddings'].to(device)
                 N = h_embeds.shape[0]
 
                 # 1. randomly replecing c_embeds to None
@@ -335,8 +342,35 @@ class Pipe:
 
             loss_epoch = loss_sum / len(dataloader)
             print(f'epoch: {epoch}, loss: {loss_epoch}')
+            loss_per_epoch[epoch] = loss_epoch
+
+            if self.logger:
+                self.logger.log({'diffusion_epoch': epoch,
+                                 'diffusion_train_loss': loss_epoch})
+
+            if loss_epoch < best_loss:
+
+                # Update best loss!
+                best_loss = loss_epoch
+
+                # Save the model if better                  
+                # file_path = f"{args.model_dir}/{args.atms_target}_{args.diffusion_target}_Diffusion_prior/{sub}/lr{learning_rate}_alpha{args.alpha}_epochs{args.epochs}_{args.diffusion_epochs}" if args.insubject else f"{args.model_dir}/across/{args.atms_target}_{args.diffusion_target}_Diffusion_prior/lr{learning_rate}_alpha{args.alpha}_epochs{args.epochs}_{args.diffusion_epochs}"
+                file_path = f"{args.model_dir}/{args.atms_target}_{args.diffusion_target}_Diffusion_prior/{sub}/{args.name}" if args.insubject else f"{args.model_dir}/across/{args.atms_target}_{args.diffusion_target}_Diffusion_prior/{args.name}"
+                #if args.alpha_scheduler:
+                #    file_path += '_alpha_scheduler'
+                os.makedirs(file_path, exist_ok=True)             
+                save_path = f"{file_path}/best.pth"
+                torch.save(self.diffusion_prior.state_dict(), save_path)
+                print(f"Model saved in {file_path}!")
+
+                with open('loss_per_epoch.txt', 'w') as epoch_results: 
+                    epoch_results.write(str(loss_per_epoch))
+
             # lr_scheduler.step(loss)
 
+        with open('loss_per_epoch.txt', 'w') as epoch_results: 
+            epoch_results.write(str(loss_per_epoch))
+    
     def generate(
             self, 
             c_embeds=None, 

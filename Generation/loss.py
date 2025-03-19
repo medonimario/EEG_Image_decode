@@ -84,6 +84,7 @@ class ClipLoss(nn.Module):
         rank=0,
         world_size=1,
         use_horovod=False,
+        uniformity_loss_weight=0,  # Flag to add uniformity loss
     ):
         super().__init__()
         self.local_loss = local_loss
@@ -96,6 +97,9 @@ class ClipLoss(nn.Module):
         # cache state
         self.prev_num_logits = 0
         self.labels = {}
+
+        # Additional loss flags
+        self.uniformity_loss_weight = uniformity_loss_weight
 
     def forward(self, image_features, text_features, logit_scale):
         device = image_features.device
@@ -138,4 +142,143 @@ class ClipLoss(nn.Module):
             F.cross_entropy(logits_per_image, labels)
             + F.cross_entropy(logits_per_text, labels)
         ) / 2
+
+
+        # Uniformity loss
+        if self.uniformity_loss_weight:
+            total_loss += self.uniformity_loss_weight * (1/2 * (uniformity_loss(image_features) + uniformity_loss(text_features)))
+
+        # Cross-modal uniformity loss
+        if self.uniformity_loss_weight:
+            total_loss += self.uniformity_loss_weight * (cross_modal_uniformity_loss(image_features, text_features))
+
+        # Alignment loss
+        if self.uniformity_loss_weight:
+            total_loss += self.uniformity_loss_weight * (alignment_loss(image_features, text_features))
+
         return total_loss
+
+
+# Helper functions for the various loss components
+
+def uniformity_loss(features):
+    """
+    Computes the uniformity loss for the given embeddings.
+    """
+    N = features.shape[0]
+    pairwise_diff = features.unsqueeze(1) - features.unsqueeze(0)
+    pairwise_dist_sq = torch.sum(pairwise_diff ** 2, dim=-1)
+    exp_term = torch.exp(-2 * pairwise_dist_sq)
+    loss = torch.log(torch.mean(exp_term))
+    print("Uniformity loss: ", loss)
+    return loss
+
+
+def cross_modal_uniformity_loss(image_features, text_features):
+    """
+    Computes the cross-modal uniformity loss between image and text embeddings.
+    """
+    N = image_features.shape[0]
+    pairwise_diff = image_features.unsqueeze(1) - text_features.unsqueeze(0)
+    pairwise_dist_sq = torch.sum(pairwise_diff ** 2, dim=-1)
+    
+    mask = ~torch.eye(N, dtype=torch.bool, device=image_features.device)
+    exp_term = torch.exp(-2 * pairwise_dist_sq)
+    masked_exp_term = exp_term[mask]
+    
+    loss = torch.log(masked_exp_term.mean())
+    print("cross_modal uniformity loss: ", loss)
+
+    return loss
+
+
+def alignment_loss(image_features, text_features):
+    """
+    Computes the alignment loss between image and text embeddings.
+    """
+    N = image_features.shape[0]
+    pairwise_diff = image_features - text_features
+    pairwise_dist_sq = torch.sum(pairwise_diff ** 2, dim=-1)
+    loss = torch.mean(pairwise_dist_sq)
+    print("alignment loss: ", loss)
+
+    return loss
+
+
+
+
+class VICReg_loss(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.args = args
+        self.num_features = int(args.mlp.split("-")[-1])
+        self.embedding = 1024 
+        self.projector = Projector(args, self.embedding)
+
+    def forward(self, x, y):
+        x = self.projector(x)
+        y = self.projector(y)
+
+        repr_loss = F.mse_loss(x, y)
+
+        # For multi-processing 
+        #x = torch.cat(FullGatherLayer.apply(x), dim=0)
+        #y = torch.cat(FullGatherLayer.apply(y), dim=0)
+        # without it x = x, and y=y
+
+
+        x = x - x.mean(dim=0)
+        y = y - y.mean(dim=0)
+
+        std_x = torch.sqrt(x.var(dim=0) + 0.0001)
+        std_y = torch.sqrt(y.var(dim=0) + 0.0001)
+        std_loss = torch.mean(F.relu(1 - std_x)) / 2 + torch.mean(F.relu(1 - std_y)) / 2
+
+        cov_x = (x.T @ x) / (self.args.batch_size - 1)
+        cov_y = (y.T @ y) / (self.args.batch_size - 1)
+        cov_loss = off_diagonal(cov_x).pow_(2).sum().div(
+            self.num_features
+        ) + off_diagonal(cov_y).pow_(2).sum().div(self.num_features)
+
+        loss = (
+            self.args.sim_coeff * repr_loss
+            + self.args.std_coeff * std_loss
+            + self.args.cov_coeff * cov_loss
+        )
+        return loss
+
+
+def Projector(args, embedding):
+    mlp_spec = f"{embedding}-{args.mlp}"
+    layers = []
+    f = list(map(int, mlp_spec.split("-")))
+    for i in range(len(f) - 2):
+        layers.append(nn.Linear(f[i], f[i + 1]))
+        layers.append(nn.BatchNorm1d(f[i + 1]))
+        layers.append(nn.ReLU(True))
+    layers.append(nn.Linear(f[-2], f[-1], bias=False))
+    return nn.Sequential(*layers)
+
+def off_diagonal(x):
+    n, m = x.shape
+    assert n == m
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+
+class FullGatherLayer(torch.autograd.Function):
+    """
+    Gather tensors from all process and support backward propagation
+    for the gradients across processes.
+    """
+
+    @staticmethod
+    def forward(ctx, x):
+        output = [torch.zeros_like(x) for _ in range(dist.get_world_size())]
+        dist.all_gather(output, x)
+        return tuple(output)
+
+    @staticmethod
+    def backward(ctx, *grads):
+        all_gradients = torch.stack(grads)
+        dist.all_reduce(all_gradients)
+        return all_gradients[dist.get_rank()]

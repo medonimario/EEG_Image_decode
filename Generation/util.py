@@ -229,12 +229,12 @@ def unpatchify(x, patch_size):
     return imgs
 
 class wandb_logger:
-    def __init__(self, config):
+    def __init__(self, config, subject):
         try:
             wandb.init(
                 # Set the project where this run will be logged
                 project=config['project'],
-                name=config['name'],
+                name=config['name']+subject,
                 config=config,
                 entity=config['entity'],            
                 )
@@ -242,7 +242,7 @@ class wandb_logger:
                 wandb.init(
                 # Set the project where this run will be logged
                 project=config.project,
-                name=config.name,
+                name=config.name+subject,
                 config=config,
                 entity=config.entity,            
                 )

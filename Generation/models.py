@@ -35,7 +35,7 @@ from subject_layers.Transformer_EncDec import Encoder, EncoderLayer
 from subject_layers.SelfAttention_Family import FullAttention, AttentionLayer
 from subject_layers.Embed import DataEmbedding
 import numpy as np
-from loss import ClipLoss
+from loss import ClipLoss, VICReg_loss
 import argparse
 from torch import nn
 from torch.optim import AdamW
@@ -160,7 +160,7 @@ class Proj_eeg(nn.Sequential):
         )
 
 class ATMS(nn.Module):    
-    def __init__(self, num_channels=63, sequence_length=250, num_subjects=2, num_features=64, num_latents=1024, num_blocks=1):
+    def __init__(self, num_channels=63, sequence_length=250, num_subjects=2, num_features=64, num_latents=1024, num_blocks=1, args=None):
         super(ATMS, self).__init__()
         default_config = Config()
         self.encoder = iTransformer(default_config)   
@@ -168,7 +168,17 @@ class ATMS(nn.Module):
         self.enc_eeg = Enc_eeg()
         self.proj_eeg = Proj_eeg()        
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-        self.loss_func = ClipLoss()       
+        self.args = args
+
+        if self.args.loss_fn == 'clip':
+
+            self.loss_func = ClipLoss(
+                        uniformity_loss_weight = self.args.uniformity_loss_weight,  # Flag to add uniformity loss
+                )
+            
+        elif self.args.loss_fn == 'vicreg':
+
+            self.loss_func = VICReg_loss(args = self.args)
          
     def forward(self, x, subject_ids):
         x = self.encoder(x, None, subject_ids)

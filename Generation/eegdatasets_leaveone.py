@@ -10,16 +10,17 @@ from PIL import Image
 import requests
 
 import os
-proxy = 'http://10.16.35.10:13390'
-os.environ['http_proxy'] = proxy
-os.environ['https_proxy'] = proxy
+#proxy = 'http://10.16.35.10:13390'
+#os.environ['http_proxy'] = proxy
+#os.environ['https_proxy'] = proxy
 
-device = "cuda:5" if torch.cuda.is_available() else "cpu"
+# TODO: was previously cuda:5
+device = "cuda" if torch.cuda.is_available() else "cpu"
 # vlmodel, preprocess = clip.load("ViT-B/32", device=device)
 model_type = 'ViT-H-14'
-# import open_clip
-# vlmodel, preprocess_train, feature_extractor = open_clip.create_model_and_transforms(
-#     model_type, pretrained='laion2b_s32b_b79k', precision='fp32', device=device)
+import open_clip
+vlmodel, preprocess_train, feature_extractor = open_clip.create_model_and_transforms(
+     model_type, pretrained='laion2b_s32b_b79k', precision='fp32', device=device)
 
 import json
 
@@ -39,7 +40,7 @@ class EEGDataset():
     """
     subjects = ['sub-01', 'sub-02', 'sub-05', 'sub-04', 'sub-03', 'sub-06', 'sub-07', 'sub-08', 'sub-09', 'sub-10']
     """
-    def __init__(self, data_path, exclude_subject=None, subjects=None, train=True, time_window=[0, 1.0], classes = None, pictures = None):
+    def __init__(self, data_path, exclude_subject=None, subjects=None, train=True, time_window=[0, 1.0], classes = None, pictures = None, device = torch.device('cuda')):
         self.data_path = data_path
         self.train = train
         self.subject_list = os.listdir(data_path)
@@ -50,6 +51,7 @@ class EEGDataset():
         self.classes = classes
         self.pictures = pictures
         self.exclude_subject = exclude_subject
+        self.device = device
 
         # assert any subjects in subject_list
         assert any(sub in self.subject_list for sub in self.subjects)
@@ -64,7 +66,7 @@ class EEGDataset():
             features_filename = os.path.join(f'{model_type}_features_train.pt') if self.train else os.path.join(f'{model_type}_features_test.pt')
             
             if os.path.exists(features_filename) :
-                saved_features = torch.load(features_filename)
+                saved_features = torch.load(features_filename, map_location=self.device )
                 self.text_features = saved_features['text_features']
                 self.img_features = saved_features['img_features']
             else:
