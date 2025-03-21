@@ -1,8 +1,8 @@
 {
-    "data_path": "/home/ldy/Workspace/THINGS/Preprocessed_data_250Hz",
-    "img_directory_training": "/home/ldy/Workspace/THINGS/images_set/training_images",
-    
-    "img_directory_test": "/home/ldy/Workspace/Generation/generated_imgs",
-    "features_path":"/home/ldy/Workspace/THINGS/CLIP"
+    "data_path": "/work3/s204684/SC1/Preprocessed_data_250Hz",
+    "img_directory_training": "/work3/s204684/SC1/images_set/training_images",
+    "img_directory_test": "/work3/s204684/SC1/images_set/test_images",
+    "img_directory_generated": "/work3/s204684/SC1/images_set/generated_images",
+    "features_path":"/work3/s204684/SC1"
 }
 

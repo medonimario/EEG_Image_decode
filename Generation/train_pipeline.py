@@ -403,13 +403,13 @@ if __name__ == '__main__':
 
     # Use argparse to parse the command-line arguments
     parser = argparse.ArgumentParser(description='EEG Transformer Training Script')
-    parser.add_argument('--data_path', type=str, default="/work3/s184984/repos/EEG_Image_decode/eeg_dataset/Preprocessed_data_250Hz", help='Path to the EEG dataset')
-    parser.add_argument('--output_dir', type=str, default='./outputs/contrast', help='Directory to save output results')    
-    parser.add_argument('--model_dir', type=str, default='./models/EEG_encoder', help='Directory to save output results')    
+    parser.add_argument('--data_path', type=str, default="/work3/s204684/SC1//Preprocessed_data_250Hz", help='Path to the EEG dataset')
+    parser.add_argument('--output_dir', type=str, default='/work3/s204684/SC1/outputs/contrast', help='Directory to save output results')    
+    parser.add_argument('--model_dir', type=str, default='/work3/s204684/SC1/models/EEG_encoder', help='Directory to save output results')    
     parser.add_argument('--experiment_name', type=str, default='', help='Directory to save output results')    
-    parser.add_argument('--embeddings_dir', type=str, default='./embeddings/EEG_encoder', help='Directory to save output results')        
-    parser.add_argument('--project', type=str, default="EEG_image_reconstruction", help='WandB project name')
-    parser.add_argument('--entity', type=str, default="philliphoejbjerg", help='WandB entity name')
+    parser.add_argument('--embeddings_dir', type=str, default='/work3/s204684/SC1/embeddings/EEG_encoder', help='Directory to save output results')        
+    parser.add_argument('--project', type=str, default="eeg_reconstruction", help='WandB project name')
+    parser.add_argument('--entity', type=str, default="medonimarius", help='WandB entity name')
     parser.add_argument('--name', type=str, default="modified_loss", help='Experiment name')
     parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate')
     parser.add_argument('--diffusion_lr', type=float, default=1e-3, help='Learning rate')
@@ -456,7 +456,7 @@ if __name__ == '__main__':
 
     load_dotenv()
 
-    os.environ["WANDB_API_KEY"] = "b0c5da2aac89929c85f768b56e5f260e287064ab"
+    os.environ["WANDB_API_KEY"] = "19e47b59ec1eba528b997e9b55ab62b1a984fbbe"
     os.environ["WANDB_MODE"] = 'online'
 
     # Example usage
